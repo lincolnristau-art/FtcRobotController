@@ -25,6 +25,7 @@ public class AutonomousOpMode extends OpMode {
     static final double DRIVE_SPEED = 0.6;
     static final double TURN_SPEED = 0.5;
     static final double TURN_RADIUS = 10;
+    static final double TOLERANCE_IN = 1; // We can be 1 inch off
 
     static final double COUNTS_PER_MOTOR_REV = 1440;    // eg: TETRIX Motor Encoder
     static final double DRIVE_GEAR_REDUCTION = 1.0;     // No External Gearing.
@@ -68,8 +69,9 @@ public class AutonomousOpMode extends OpMode {
         }
     }
 
-    private boolean drive(double speed, double dx, double dy) {
+    private ElapsedTime driveTimer = new ElapsedTime();
 
+    private boolean drive(double speed, double dx, double dy, double waitSecs) {
         if(dx == 0 && dy == 0) return true;
 
         int newFrontLeftTarget;
@@ -82,31 +84,29 @@ public class AutonomousOpMode extends OpMode {
         int dxIn = (int)(dx * COUNTS_PER_INCH / Math.cos(45));
         int dyIn = (int)(dy * COUNTS_PER_INCH);
 
-        newFrontLeftTarget = frontLeft.getCurrentPosition() + dyIn + dxIn;
-        newFrontRightTarget = frontRight.getCurrentPosition() + dyIn - dxIn;
-        newBackLeftTarget = backLeft.getCurrentPosition() + dyIn - dxIn;
-        newBackRightTarget = backRight.getCurrentPosition() + dyIn + dxIn;
-
-        frontLeft.setTargetPosition(newFrontLeftTarget);
-        frontRight.setTargetPosition(newFrontRightTarget);
-        backLeft.setTargetPosition(newBackLeftTarget);
-        backRight.setTargetPosition(newBackRightTarget);
+        frontLeft.setTargetPosition(dyIn + dxIn);
+        frontRight.setTargetPosition(dyIn - dxIn);
+        backLeft.setTargetPosition(dyIn - dxIn);
+        backRight.setTargetPosition(dyIn + dxIn);
 
         m_setMode(DcMotor.RunMode.RUN_TO_POSITION);
 
-        frontLeft.setPower(Math.abs(speed));
-        frontRight.setPower(Math.abs(speed));
-        backLeft.setPower(Math.abs(speed));
-        backRight.setPower(Math.abs(speed));
+        frontLeft.setPower(speed);
+        frontRight.setPower(speed);
+        backLeft.setPower(speed);
+        backRight.setPower(speed);
 
-        if(!(frontLeft.isBusy() && frontRight.isBusy()
-                        && backLeft.isBusy() && backRight.isBusy())) {
+        if(Math.abs(newFrontRightTarget - frontRight.getCurrentPosition()) > (TOLERANCE_IN * COUNTS_PER_INCH)){
+            driveTimer.reset();
+        }
+
+        if(driveTimer.seconds() > waitSecs) {
             frontLeft.setPower(0);
             frontRight.setPower(0);
             backLeft.setPower(0);
             backRight.setPower(0);
 
-            m_setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+            m_setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
 
             return true;
         }
@@ -114,7 +114,9 @@ public class AutonomousOpMode extends OpMode {
         return false;
     }
 
-    private boolean rotate(double speed, double degrees) {
+    private boolean rotate(double speed, double degrees, double waitSecs) {
+        if(degrees == 0) return true;
+
         int newFrontLeftTarget;
         int newBackLeftTarget;
         int newFrontRightTarget;
@@ -125,31 +127,29 @@ public class AutonomousOpMode extends OpMode {
         //int drIn = (int)(dr * COUNTS_PER_INCH);
         int drIn = 5;
 
-        newFrontLeftTarget = frontLeft.getCurrentPosition() + drIn;
-        newFrontRightTarget = frontRight.getCurrentPosition() - drIn;
-        newBackLeftTarget = backLeft.getCurrentPosition() + drIn;
-        newBackRightTarget = backRight.getCurrentPosition() - drIn;
-
-        frontLeft.setTargetPosition(newFrontLeftTarget);
-        frontRight.setTargetPosition(newFrontRightTarget);
-        backLeft.setTargetPosition(newBackLeftTarget);
-        backRight.setTargetPosition(newBackRightTarget);
+        frontLeft.setTargetPosition(drIn);
+        frontRight.setTargetPosition(-drIn);
+        backLeft.setTargetPosition(drIn);
+        backRight.setTargetPosition(-drIn);
 
         m_setMode(DcMotor.RunMode.RUN_TO_POSITION);
 
-        frontLeft.setPower(Math.abs(speed));
-        frontRight.setPower(Math.abs(speed));
-        backLeft.setPower(Math.abs(speed));
-        backRight.setPower(Math.abs(speed));
+        frontLeft.setPower(speed);
+        frontRight.setPower(speed);
+        backLeft.setPower(speed);
+        backRight.setPower(speed);
 
-        if(!(frontLeft.isBusy() && frontRight.isBusy()
-                        && backLeft.isBusy() && backRight.isBusy())) {
+        if(Math.abs(newFrontRightTarget - frontRight.getCurrentPosition()) > (TOLERANCE_IN * COUNTS_PER_INCH)){
+            driveTimer.reset();
+        }
+
+        if(driveTimer.seconds() > waitSecs) {
             frontLeft.setPower(0);
             frontRight.setPower(0);
             backLeft.setPower(0);
             backRight.setPower(0);
 
-            m_setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+            m_setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
 
             return true;
         }
@@ -186,7 +186,7 @@ public class AutonomousOpMode extends OpMode {
 
     @Override
     public void start() {
-        rotate(1, 45);
+        rotate(1, 45, 2);
         // Now we can start autonomous
         //state = AutonomousState.TARGETING;
     }
@@ -201,14 +201,14 @@ public class AutonomousOpMode extends OpMode {
                 state = AutonomousState.DRIVING;
                 break;
             case DRIVING:
-                if(drive(DRIVE_SPEED, posX - targetX, posY - targetY)) {
+                if(drive(DRIVE_SPEED, posX - targetX, posY - targetY, 2)) {
                     posX = targetX;
                     posY = targetY;
                     state = AutonomousState.ROTATING;
                 }
                 break;
             case ROTATING:
-                if(rotate(TURN_SPEED, posR - targetR)) {
+                if(rotate(TURN_SPEED, posR - targetR, 2)) {
                     posR = targetR;
                     state = AutonomousState.LAUNCHING;
                 }
